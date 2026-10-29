@@ -1,0 +1,96 @@
+name: Build Windows & Android Releases
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Unzip & Build Android APK
+        run: |
+          if [ -f "documaster.zip" ]; then
+            unzip -o documaster.zip
+          elif [ -f "DocuMaster-Pro-GitHub-v2.zip" ]; then
+            unzip -o DocuMaster-Pro-GitHub-v2.zip
+          fi
+
+          # البحث عن مجلد الفلاتر أينما كان بعد فك الضغط
+          FLUTTER_DIR=$(find . -type d -name "frontend-flutter" | head -n 1)
+          if [ -z "$FLUTTER_DIR" ]; then
+            FLUTTER_DIR="frontend-flutter"
+          fi
+
+          cd "$FLUTTER_DIR"
+          flutter create --platforms=android --org com.documaster.app .
+          flutter pub add file_picker http syncfusion_flutter_pdfviewer syncfusion_flutter_pdf desktop_drop signature path_provider
+          
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/DocuMaster-Pro.apk
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocuMaster-Pro-Android-APK
+          path: DocuMaster-Pro.apk
+
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Unzip & Build Windows EXE
+        shell: bash
+        run: |
+          if [ -f "documaster.zip" ]; then
+            unzip -o documaster.zip
+          elif [ -f "DocuMaster-Pro-GitHub-v2.zip" ]; then
+            unzip -o DocuMaster-Pro-GitHub-v2.zip
+          fi
+
+          FLUTTER_DIR=$(find . -type d -name "frontend-flutter" | head -n 1)
+          if [ -z "$FLUTTER_DIR" ]; then
+            FLUTTER_DIR="frontend-flutter"
+          fi
+
+          cd "$FLUTTER_DIR"
+          flutter config --enable-windows-desktop
+          flutter create --platforms=windows .
+          flutter pub add file_picker http syncfusion_flutter_pdfviewer syncfusion_flutter_pdf desktop_drop signature path_provider
+          
+          flutter build windows --release
+          mkdir -p $GITHUB_WORKSPACE/windows-release
+          cp -r build/windows/x64/runner/Release/* $GITHUB_WORKSPACE/windows-release/
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocuMaster-Pro-Windows-PC
+          path: windows-release/
